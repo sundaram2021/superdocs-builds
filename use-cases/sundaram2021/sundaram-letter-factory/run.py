@@ -90,45 +90,41 @@ def build_batch(letters):
     return "\n".join(parts), flat
 
 
-def build_instruction(letters, only_sections=None):
-    """Write the edit instruction as a literal token to value mapping.
+def build_instruction(flat, only_sections=None):
+    """Write the edit instruction as exact before and after text per section.
 
-    The instruction never asks for wording, only for substitution, and it states
-    the completion condition explicitly, because a turn that stops half way
-    through a batch leaves letters unfinished.
+    I first wrote this as a token to value map and let the editor do the
+    substitution. On longer letters that produced invented figures, invented
+    interest rates and even an invented regulator name. My verification denied
+    all of it, but half the run was held back. Stating the exact text each
+    section must end up reading removes the room to invent: the wording still
+    comes from the approved block and the figures still come from the formula,
+    and the editor is left with the targeted edit itself.
     """
     lines = [
-        "This document is a batch of legally approved letters. The wording is fixed and "
-        "approved by legal. Replace placeholder tokens with the exact values listed below "
-        "and change nothing else: no rewording, no reordering, no added or removed "
-        "sentences, no changes to punctuation outside the replaced tokens.",
+        "This document is a batch of legally approved letters. Apply these exact section "
+        "replacements. Each item gives the current text of one section and the exact text it "
+        "must read afterwards. Copy the replacement text character for character. Do not "
+        "reword, summarise, translate or reorder anything, and do not invent any number, date, "
+        "rate or organisation name.",
         "",
     ]
-    for letter in letters:
-        customer_id = letter["record"]["customer_id"]
-        wanted = None
-        if only_sections is not None:
-            wanted = only_sections.get(customer_id)
-            if not wanted:
-                continue
-        placeholders = set()
-        for section in letter["sections"]:
-            if wanted is None or section["id"] in wanted:
-                placeholders.update(section["placeholders"])
-        if not placeholders:
+    numbered = 0
+    for entry in flat:
+        if not entry["editable"]:
             continue
-        lines.append("For account {0}, apply these exact replacements:".format(
-            letter["record"]["account_number"]))
-        for placeholder in sorted(placeholders):
-            lines.append("  replace {0} with: {1}".format(
-                token_for(customer_id, placeholder), letter["fills"][placeholder]))
+        if only_sections is not None:
+            wanted = only_sections.get(entry["customer_id"])
+            if not wanted or entry["section_id"] not in wanted:
+                continue
+        numbered += 1
+        lines.append("{0}. Section currently reading:".format(numbered))
+        lines.append("   " + entry["template_text"])
+        lines.append("   must read exactly:")
+        lines.append("   " + entry["expected_text"])
         lines.append("")
-    lines.append("Leave every section that contains no placeholder token exactly as it is.")
-    lines.append(
-        "This is important: the document is not finished until no {{ }} token remains "
-        "anywhere in it. Work through every section that contains a token, in one pass, and "
-        "replace every token listed above. Do not stop early and do not ask which sections "
-        "to do.")
+    lines.append("Leave every other section exactly as it is. The document is not finished "
+                 "until no {{ }} token remains anywhere in it.")
     return "\n".join(lines)
 
 
@@ -261,7 +257,7 @@ def process_batch(client, batch_index, letters, out_dir, export_format, use_ai_r
             log("chat: {0} section(s) still unfilled, sending one follow up turn".format(
                 sum(len(v) for v in only_sections.values())))
         job_id = client.start_chat(
-            session_id, build_instruction(letters, only_sections), model_tier=MODEL_TIER)
+            session_id, build_instruction(flat, only_sections), model_tier=MODEL_TIER)
         chat_turns += 1
         run_approval_rounds(client, session_id, job_id, by_chunk, outcomes,
                             use_ai_review, log)
