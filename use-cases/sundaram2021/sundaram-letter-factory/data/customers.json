@@ -320,6 +320,54 @@
       "notice_date": "2026-08-17",
       "stated_refund_cents": 6912219,
       "defect_note": "refund above the automated ceiling"
+    },
+    {
+      "customer_id": "CUS-3001",
+      "customer_name": "Abigail Fenwick",
+      "jurisdiction": "new_york",
+      "stage": "first_notice",
+      "language": "en",
+      "account_number": "NY-31220744",
+      "overcharge_cents": 73400,
+      "overcharge_start_date": "2025-12-18",
+      "notice_date": "2026-08-17",
+      "stated_refund_cents": 77780
+    },
+    {
+      "customer_id": "CUS-3002",
+      "customer_name": "Bruno Castellanos",
+      "jurisdiction": "new_york",
+      "stage": "first_notice",
+      "language": "es",
+      "account_number": "NY-31220745",
+      "overcharge_cents": 112500,
+      "overcharge_start_date": "2025-10-06",
+      "notice_date": "2026-08-17",
+      "stated_refund_cents": 121238
+    },
+    {
+      "customer_id": "CUS-3003",
+      "customer_name": "Colette Duchamp",
+      "jurisdiction": "new_york",
+      "stage": "final_notice",
+      "language": "en",
+      "account_number": "NY-31220746",
+      "overcharge_cents": 58900,
+      "overcharge_start_date": "2026-02-09",
+      "notice_date": "2026-08-17",
+      "stated_refund_cents": 61645
+    },
+    {
+      "customer_id": "CUS-3004",
+      "customer_name": "Dario Espinoza",
+      "jurisdiction": "new_york",
+      "stage": "final_notice",
+      "language": "es",
+      "account_number": "NY-31220747",
+      "overcharge_cents": 95250,
+      "overcharge_start_date": "2025-07-24",
+      "notice_date": "2026-08-17",
+      "stated_refund_cents": 104386
     }
   ]
 }

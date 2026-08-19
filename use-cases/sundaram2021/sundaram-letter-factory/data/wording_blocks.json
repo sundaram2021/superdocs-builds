@@ -334,6 +334,220 @@
           "text": "Sincerely, Remediation Operations"
         }
       ]
+    },
+    {
+      "id": "new_york_first_notice_en_v1",
+      "jurisdiction": "new_york",
+      "stage": "first_notice",
+      "language": "en",
+      "version": "1.0",
+      "approved_by": "Legal Operations, remediation programme 2026-A",
+      "subject": "Notice of overcharge and refund due",
+      "sections": [
+        {
+          "id": "heading",
+          "tag": "h1",
+          "text": "Notice of Overcharge and Refund Due"
+        },
+        {
+          "id": "salutation",
+          "tag": "p",
+          "text": "Dear {{customer_name}},"
+        },
+        {
+          "id": "account_line",
+          "tag": "p",
+          "text": "Account number: {{account_number}}. Date of this notice: {{notice_date}}."
+        },
+        {
+          "id": "finding",
+          "tag": "p",
+          "text": "We are required to tell you that we overcharged your account. From {{overcharge_start_date}} onward, we billed you above the amount your agreement allows. The overcharged total is {{overcharge_amount}}."
+        },
+        {
+          "id": "calculation_basis",
+          "tag": "p",
+          "text": "New York law entitles you to interest on that amount. Interest of {{interest_amount}} has accrued over {{accrual_days}} days at the annual rate of {{annual_rate_percent}}. Your refund is {{refund_amount}}, which is the overcharge of {{overcharge_amount}} plus interest of {{interest_amount}}."
+        },
+        {
+          "id": "remedy",
+          "tag": "p",
+          "text": "We will refund you without any action on your part. Payment will go to the method on file, or by cheque to your address of record. Accepting this refund does not waive any right or claim you hold."
+        },
+        {
+          "id": "dispute_rights",
+          "tag": "p",
+          "text": "You have {{response_window_days}} days from the date of this notice to dispute the amount stated here. We will investigate and reply in writing. You may contact the {{regulator}} at any time and you may consult your own lawyer."
+        },
+        {
+          "id": "signoff",
+          "tag": "p",
+          "text": "Sincerely, Remediation Operations"
+        }
+      ]
+    },
+    {
+      "id": "new_york_first_notice_es_v1",
+      "jurisdiction": "new_york",
+      "stage": "first_notice",
+      "language": "es",
+      "version": "1.0",
+      "approved_by": "Legal Operations, remediation programme 2026-A",
+      "subject": "Aviso de cobro en exceso y reembolso adeudado",
+      "sections": [
+        {
+          "id": "heading",
+          "tag": "h1",
+          "text": "Aviso de Cobro en Exceso y Reembolso Adeudado"
+        },
+        {
+          "id": "salutation",
+          "tag": "p",
+          "text": "Estimado o estimada {{customer_name}}:"
+        },
+        {
+          "id": "account_line",
+          "tag": "p",
+          "text": "Numero de cuenta: {{account_number}}. Fecha de este aviso: {{notice_date}}."
+        },
+        {
+          "id": "finding",
+          "tag": "p",
+          "text": "Estamos obligados a informarle que le cobramos en exceso en su cuenta. Desde el {{overcharge_start_date}}, le facturamos por encima del monto que permite su contrato. El total cobrado en exceso es {{overcharge_amount}}."
+        },
+        {
+          "id": "calculation_basis",
+          "tag": "p",
+          "text": "La ley de Nueva York le da derecho a intereses sobre ese monto. Se han acumulado intereses de {{interest_amount}} durante {{accrual_days}} dias a la tasa anual de {{annual_rate_percent}}. Su reembolso es {{refund_amount}}, que corresponde al cobro en exceso de {{overcharge_amount}} mas los intereses de {{interest_amount}}."
+        },
+        {
+          "id": "remedy",
+          "tag": "p",
+          "text": "Le haremos el reembolso sin que usted tenga que hacer nada. El pago se enviara al metodo registrado, o mediante cheque a su direccion registrada. Aceptar este reembolso no implica renuncia a ningun derecho ni reclamo."
+        },
+        {
+          "id": "dispute_rights",
+          "tag": "p",
+          "text": "Tiene {{response_window_days}} dias a partir de la fecha de este aviso para disputar el monto indicado. Investigaremos y le responderemos por escrito. Puede comunicarse con {{regulator}} en cualquier momento y puede consultar a su propio abogado."
+        },
+        {
+          "id": "signoff",
+          "tag": "p",
+          "text": "Atentamente, Operaciones de Remediacion"
+        }
+      ]
+    },
+    {
+      "id": "new_york_final_notice_en_v1",
+      "jurisdiction": "new_york",
+      "stage": "final_notice",
+      "language": "en",
+      "version": "1.0",
+      "approved_by": "Legal Operations, remediation programme 2026-A",
+      "subject": "Final notice of overcharge and refund due",
+      "sections": [
+        {
+          "id": "heading",
+          "tag": "h1",
+          "text": "Final Notice of Overcharge and Refund Due"
+        },
+        {
+          "id": "salutation",
+          "tag": "p",
+          "text": "Dear {{customer_name}},"
+        },
+        {
+          "id": "account_line",
+          "tag": "p",
+          "text": "Account number: {{account_number}}. Date of this notice: {{notice_date}}."
+        },
+        {
+          "id": "prior_notice",
+          "tag": "p",
+          "text": "This is the last notice we will send about the overcharge on your account. We wrote to you before and your refund is still unpaid."
+        },
+        {
+          "id": "finding",
+          "tag": "p",
+          "text": "We are required to tell you that we overcharged your account. From {{overcharge_start_date}} onward, we billed you above the amount your agreement allows. The overcharged total is {{overcharge_amount}}."
+        },
+        {
+          "id": "calculation_basis",
+          "tag": "p",
+          "text": "New York law entitles you to interest on that amount. Interest of {{interest_amount}} has accrued over {{accrual_days}} days at the annual rate of {{annual_rate_percent}}. Your refund is {{refund_amount}}, which is the overcharge of {{overcharge_amount}} plus interest of {{interest_amount}}."
+        },
+        {
+          "id": "action_required",
+          "tag": "p",
+          "text": "Confirm your current payment details within {{response_window_days}} days of the date of this notice so we can pay you {{refund_amount}}. If we cannot reach you, we will hold the money and report it as unclaimed property where the law requires. The money stays yours."
+        },
+        {
+          "id": "dispute_rights",
+          "tag": "p",
+          "text": "You have {{response_window_days}} days from the date of this notice to dispute the amount stated here. We will investigate and reply in writing. You may contact the {{regulator}} at any time and you may consult your own lawyer."
+        },
+        {
+          "id": "signoff",
+          "tag": "p",
+          "text": "Sincerely, Remediation Operations"
+        }
+      ]
+    },
+    {
+      "id": "new_york_final_notice_es_v1",
+      "jurisdiction": "new_york",
+      "stage": "final_notice",
+      "language": "es",
+      "version": "1.0",
+      "approved_by": "Legal Operations, remediation programme 2026-A",
+      "subject": "Aviso final de cobro en exceso y reembolso adeudado",
+      "sections": [
+        {
+          "id": "heading",
+          "tag": "h1",
+          "text": "Aviso Final de Cobro en Exceso y Reembolso Adeudado"
+        },
+        {
+          "id": "salutation",
+          "tag": "p",
+          "text": "Estimado o estimada {{customer_name}}:"
+        },
+        {
+          "id": "account_line",
+          "tag": "p",
+          "text": "Numero de cuenta: {{account_number}}. Fecha de este aviso: {{notice_date}}."
+        },
+        {
+          "id": "prior_notice",
+          "tag": "p",
+          "text": "Este es el ultimo aviso que le enviaremos sobre el cobro en exceso en su cuenta. Le escribimos anteriormente y su reembolso sigue pendiente."
+        },
+        {
+          "id": "finding",
+          "tag": "p",
+          "text": "Estamos obligados a informarle que le cobramos en exceso en su cuenta. Desde el {{overcharge_start_date}}, le facturamos por encima del monto que permite su contrato. El total cobrado en exceso es {{overcharge_amount}}."
+        },
+        {
+          "id": "calculation_basis",
+          "tag": "p",
+          "text": "La ley de Nueva York le da derecho a intereses sobre ese monto. Se han acumulado intereses de {{interest_amount}} durante {{accrual_days}} dias a la tasa anual de {{annual_rate_percent}}. Su reembolso es {{refund_amount}}, que corresponde al cobro en exceso de {{overcharge_amount}} mas los intereses de {{interest_amount}}."
+        },
+        {
+          "id": "action_required",
+          "tag": "p",
+          "text": "Confirme sus datos de pago actuales dentro de {{response_window_days}} dias a partir de la fecha de este aviso para que podamos pagarle {{refund_amount}}. Si no podemos comunicarnos con usted, mantendremos el dinero y lo reportaremos como propiedad no reclamada cuando la ley lo exija. El dinero sigue siendo suyo."
+        },
+        {
+          "id": "dispute_rights",
+          "tag": "p",
+          "text": "Tiene {{response_window_days}} dias a partir de la fecha de este aviso para disputar el monto indicado. Investigaremos y le responderemos por escrito. Puede comunicarse con {{regulator}} en cualquier momento y puede consultar a su propio abogado."
+        },
+        {
+          "id": "signoff",
+          "tag": "p",
+          "text": "Atentamente, Operaciones de Remediacion"
+        }
+      ]
     }
   ]
 }

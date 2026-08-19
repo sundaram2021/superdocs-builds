@@ -17,6 +17,13 @@
       "day_basis": 365,
       "response_window_days": 45,
       "regulator": "Office of Consumer Credit Commissioner"
+    },
+    "new_york": {
+      "display_name": "New York",
+      "interest_rate_bps": 900,
+      "day_basis": 365,
+      "response_window_days": 20,
+      "regulator": "New York State Department of Financial Services"
     }
   },
   "formula": {
