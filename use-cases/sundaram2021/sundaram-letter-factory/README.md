@@ -46,7 +46,7 @@ Here is the same run as a screenshot, held records and all:
 
 ![Screenshot of a full run showing counts by variant and every held record with its reason](docs/run-screenshot.svg)
 
-The full captured output is in [`sample-output/run-output.txt`](sample-output/run-output.txt), real letters SuperDocs produced are in [`sample-output/`](sample-output/), and [`sample-output/run-report.json`](sample-output/run-report.json) carries the step by step arithmetic for all 22.
+Real letters SuperDocs produced are in [`sample-output/`](sample-output/), and [`sample-output/run-report.json`](sample-output/run-report.json) carries the step by step arithmetic for all 22.
 
 ## What the data covers, and how to add more without touching code
 
@@ -75,12 +75,25 @@ python3 run.py                  # full run, every record
 python3 run.py --sample 3       # small sample mode, first three records only
 python3 run.py --offline        # validate and assemble locally, no API calls, no operations spent
 python3 run.py --format pdf     # export pdf instead of docx
-python3 test_engine.py          # 448 assertions over the figures, checks and assembly, no API key needed
+python3 run.py --resume         # continue a run that stopped, without paying for finished batches again
+python3 test_engine.py          # 482 assertions over the figures, checks and assembly, no API key needed
 ```
 
 Start with `--offline` and `--sample`. Offline mode runs the whole validation and assembly path and writes every letter locally without spending a single operation, which is how I did most of my testing.
 
 Outputs land in `out/`: one HTML letter per customer in `out/letters/`, one exported file per batch, and `out/run-report.json` with the calculation trail for every letter.
+
+## When a run stops part way
+
+Operations cost money, so a failed run must never mean paying twice.
+
+Each batch writes `out/run-state.json` the moment it finishes, recording what it sent, what it held and what it spent. If a later batch fails, the run still writes `out/run-report.json`, marks it `"status": "failed"`, prints `RUN INCOMPLETE` above the counts, names the cause and what to do about it, and exits 1. Re-running the same command with `--resume` skips every batch already completed and reports those operations as reused rather than spending them again.
+
+Session ids are derived from a hash of the batch content rather than a timestamp, so the same records always map to the same SuperDocs session and a re-run lands on the work already done. Resuming onto a different set of records is refused rather than silently mixed.
+
+Requests retry with exponential backoff and jitter on connection failures and on 429, 500, 502, 503 and 504, and 429 honours `Retry-After`. One exception matters: starting a chat is the call that costs an operation, so it is never blindly retried, only on a 429, which means the server rejected it and did no work. Anything else on that call stops the run for `--resume` rather than risking a double charge.
+
+Failures say what to do. A 413 points at `MAX_SECTIONS_PER_OPERATION`, a 429 explains that the free tier pauses at its monthly limit, a 401 points at the key, and an unreachable API says so and reminds you that resuming will not re-pay for finished batches.
 
 ## How a figure gets into a letter
 
@@ -135,11 +148,10 @@ data/wording_blocks.json   the approved wording, the only place letter text exis
 data/customers.json        30 fictional customer records, 8 of them deliberately broken
 engine.py                  figures, checks, wording block selection, assembly. No network, no model
 superdocs.py               the four API calls and the job poller
-run.py                     batching, the approve loop with verification, the run report
-ai_review.py               optional advisory second opinion from a Haiku class model, off by default
+run.py                     batching, the approve loop with verification, resume state, the run report
 test_engine.py             tests for everything deterministic, no API key required
 ```
+### DEMO
+https://www.loom.com/share/8b299da289474b2cbd31c64cd4f66faf
 
-## Credit
-
-I built this for the SuperDocs engineering task. Sundaram Kumar Jha, GitHub [@sundaram2021](https://github.com/sundaram2021).
+### Author: @sundaram2021

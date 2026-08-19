@@ -3,11 +3,14 @@
   python3 test_engine.py
 """
 
+import os
 import sys
+import tempfile
 from decimal import Decimal
 
 import engine
 import run
+import superdocs
 
 RULES, BLOCKS, RECORDS = engine.load_data()
 PASSED = []
@@ -152,6 +155,145 @@ def test_a_new_jurisdiction_needs_no_code_change():
             check("new york uses the new york rate",
                   result["values"]["annual_rate_bps"] == Decimal(
                       RULES["jurisdictions"]["new_york"]["interest_rate_bps"]))
+
+
+class FakeClient(object):
+    """Stands in for SuperDocs so the approval path can be tested with no API key."""
+
+    def __init__(self, changes):
+        self.rounds = [("awaiting_approval", changes), ("completed", [])]
+        self.decisions = []
+
+    def wait_for_pause(self, job_id):
+        return self.rounds.pop(0) if self.rounds else ("completed", [])
+
+    def approve(self, session_id, job_id, change_id, approved):
+        self.decisions.append((change_id, approved))
+        return {"status": "ok"}
+
+
+def _drift_setup():
+    entry = {"customer_id": "CUS-9001", "section_id": "dispute_rights",
+             "template_text": "You may contact the {{CUS-9001.regulator}} at any time.",
+             "expected_text": "You may contact the California Department of Financial "
+                              "Protection and Innovation at any time.",
+             "editable": True}
+    change = {"change_id": "chg-1", "chunk_id": "chunk-1",
+              "new_html": "<p>You may contact the Financial Conduct Authority at any time.</p>"}
+    outcomes = {"CUS-9001": {"approved_sections": set(), "problems": []}}
+    return entry, change, outcomes
+
+
+def test_drifted_wording_is_denied_and_reported():
+    entry, change, outcomes = _drift_setup()
+    client = FakeClient([change])
+    run.run_approval_rounds(client, "s", "j", {"chunk-1": entry}, outcomes, lambda m: None)
+    check("the drifted change was denied at the API", client.decisions == [("chg-1", False)],
+          str(client.decisions))
+    check("the section was not recorded as approved",
+          not outcomes["CUS-9001"]["approved_sections"])
+    problems = outcomes["CUS-9001"]["problems"]
+    check("the denial is reported once", len(problems) == 1, str(len(problems)))
+    check("the report quotes what was expected",
+          "California Department of Financial Protection" in problems[0]["reason"])
+    check("the report quotes what was received",
+          "Financial Conduct Authority" in problems[0]["reason"])
+
+
+def test_matching_wording_is_approved():
+    entry, change, outcomes = _drift_setup()
+    change["new_html"] = "<p>" + entry["expected_text"] + "</p>"
+    client = FakeClient([change])
+    run.run_approval_rounds(client, "s", "j", {"chunk-1": entry}, outcomes, lambda m: None)
+    check("an exact match is approved at the API", client.decisions == [("chg-1", True)],
+          str(client.decisions))
+    check("the section is recorded as approved",
+          outcomes["CUS-9001"]["approved_sections"] == set(["dispute_rights"]))
+    check("an approved section raises no problem", not outcomes["CUS-9001"]["problems"])
+
+
+def test_batch_keys_come_from_content_not_the_clock():
+    ready = [item for item in engine.prepare_all(RECORDS, RULES, BLOCKS)
+             if item["status"] == "ready"]
+    batches = run.pack_batches(ready)
+    first = [run.batch_key(batch) for batch in batches]
+    second = [run.batch_key(batch) for batch in run.pack_batches(ready)]
+    check("the same batch always gets the same key", first == second)
+    check("different batches get different keys", len(set(first)) == len(first))
+    check("the run key is stable across calls",
+          run.run_key(ready, "docx") == run.run_key(ready, "docx"))
+    check("changing the export format changes the run key",
+          run.run_key(ready, "docx") != run.run_key(ready, "pdf"))
+    check("dropping a letter changes the run key",
+          run.run_key(ready, "docx") != run.run_key(ready[:-1], "docx"))
+
+
+def test_state_round_trips_and_refuses_foreign_data():
+    directory = tempfile.mkdtemp()
+    path = os.path.join(directory, "run-state.json")
+    check("no state file means nothing to resume", run.load_state(path, "key-a") is None)
+    run.save_state(path, {"run_key": "key-a", "batches": {"b1": {"chat_turns": 1}}})
+    loaded = run.load_state(path, "key-a")
+    check("state survives a save and load", loaded["batches"]["b1"]["chat_turns"] == 1)
+    try:
+        run.load_state(path, "key-b")
+        check("resuming onto different data is refused", False, "no error raised")
+    except SystemExit as error:
+        check("resuming onto different data is refused", True)
+        check("the refusal explains what to do", "delete that file" in str(error), str(error))
+
+
+def test_report_records_a_failed_run():
+    ready = [item for item in engine.prepare_all(RECORDS, RULES, BLOCKS)
+             if item["status"] == "ready"]
+
+    class Args(object):
+        offline = False
+        sample = None
+
+    report = run.build_report([], ready, [], [], [], 3, 2, Args(), "out",
+                              "POST /v1/chat/async returned HTTP 500")
+    check("a failed run is marked failed", report["status"] == "failed")
+    check("the failure reason is kept in the report", "HTTP 500" in report["failure"])
+    check("operations already paid are separated from reused ones",
+          report["operations_used"] == 3
+          and report["operations_reused_from_earlier_run"] == 2)
+    clean = run.build_report([], ready, [], [], [], 1, 0, Args(), "out", None)
+    check("a clean run is marked completed", clean["status"] == "completed")
+
+
+class FakeHTTPError(object):
+    def __init__(self, retry_after):
+        self.headers = {"Retry-After": retry_after} if retry_after else {}
+
+
+def test_retry_after_is_honoured():
+    check("a plain seconds value is used",
+          superdocs._retry_after_seconds(FakeHTTPError("7"), 99) == 7)
+    check("a missing header falls back to the backoff",
+          superdocs._retry_after_seconds(FakeHTTPError(None), 99) == 99)
+    check("an absurd value is capped",
+          superdocs._retry_after_seconds(FakeHTTPError("99999"), 1)
+          == superdocs.MAX_BACKOFF_SECONDS)
+    check("an http date is understood",
+          superdocs._retry_after_seconds(
+              FakeHTTPError("Wed, 21 Oct 2099 07:28:00 GMT"), 5)
+          == superdocs.MAX_BACKOFF_SECONDS)
+    check("a malformed header falls back to the backoff",
+          superdocs._retry_after_seconds(FakeHTTPError("soon please"), 42) == 42)
+
+
+def test_connection_errors_are_retryable_and_named():
+    check("429 is treated as retryable", 429 in superdocs.RETRYABLE_STATUS)
+    check("server errors are treated as retryable",
+          all(code in superdocs.RETRYABLE_STATUS for code in (500, 502, 503, 504)))
+    check("a 401 is not retried", 401 not in superdocs.RETRYABLE_STATUS)
+    for code in (401, 413, 429):
+        advice = superdocs.STATUS_ADVICE.get(code)
+        check("HTTP {0} carries advice, not just a number".format(code), bool(advice))
+    check("the 413 advice names the setting to change",
+          "MAX_SECTIONS_PER_OPERATION" in superdocs.STATUS_ADVICE[413])
+    check("the resume hint is offered on failures", "--resume" in superdocs.RESUME_HINT)
 
 
 def main():

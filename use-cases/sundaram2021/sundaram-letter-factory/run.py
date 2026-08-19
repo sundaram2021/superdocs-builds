@@ -3,20 +3,20 @@
   python3 run.py                 full run against SuperDocs
   python3 run.py --sample 3      first three customer records only
   python3 run.py --offline       assemble and validate, make no API calls
+  python3 run.py --resume        continue a stopped run without paying twice
 
 The order is always the same: prepare and validate every record locally, then
 send only the records that passed, in batches sized to the operation limit.
 """
 
 import argparse
+import hashlib
 import html as html_module
 import json
 import os
 import re
 import sys
-import time
 
-import ai_review
 import engine
 import superdocs
 
@@ -52,6 +52,46 @@ def normalize(text):
     plain = TAG_RE.sub("", text)
     plain = html_module.unescape(plain)
     return " ".join(plain.split())
+
+
+def batch_key(letters):
+    """A stable name for a batch, derived from its content rather than the clock.
+
+    Two runs over the same records produce the same key and therefore the same
+    SuperDocs session, so a re-run lands on the work already done instead of
+    creating a fresh session and paying for it again.
+    """
+    material = json.dumps(
+        [[letter["record"]["customer_id"]] + [section["text"] for section in letter["sections"]]
+         for letter in letters], sort_keys=True)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+def run_key(letters, export_format):
+    material = json.dumps(sorted(batch_key([letter]) for letter in letters)) + export_format
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+def load_state(path, expected_run_key):
+    """Read the state left by an earlier run, refusing to mix it with other data."""
+    if not os.path.exists(path):
+        return None
+    with open(path) as fh:
+        state = json.load(fh)
+    if state.get("run_key") != expected_run_key:
+        raise SystemExit(
+            "Cannot resume: {0} was written for a different set of records or export format.\n"
+            "Either restore the data files it was written for, or delete that file and start a "
+            "fresh run.".format(path))
+    return state
+
+
+def save_state(path, state):
+    """Written after every batch, so a crash never loses the record of paid work."""
+    temporary = path + ".tmp"
+    with open(temporary, "w") as fh:
+        json.dump(state, fh, indent=2)
+    os.replace(temporary, path)
 
 
 def token_for(customer_id, placeholder):
@@ -161,7 +201,7 @@ def letter_html(letter):
                 html_module.escape(letter["block"]["subject"]), "\n".join(parts))
 
 
-def run_approval_rounds(client, session_id, job_id, by_chunk, outcomes, use_ai_review, log):
+def run_approval_rounds(client, session_id, job_id, by_chunk, outcomes, log):
     """Verify and answer every proposed change until the job has nothing left.
 
     A change is approved only when its text matches the approved wording with the
@@ -193,11 +233,6 @@ def run_approval_rounds(client, session_id, job_id, by_chunk, outcomes, use_ai_r
             outcome = outcomes[entry["customer_id"]]
             matches = returned_text == normalize(entry["expected_text"])
 
-            if use_ai_review and entry["editable"]:
-                note = ai_review.review(entry["template_text"], change.get("new_html") or "")
-                if note:
-                    outcome["ai_notes"].append("{0}: {1}".format(entry["section_id"], note))
-
             client.approve(session_id, job_id, change["change_id"], matches)
             if matches:
                 outcome["approved_sections"].add(entry["section_id"])
@@ -212,10 +247,9 @@ def run_approval_rounds(client, session_id, job_id, by_chunk, outcomes, use_ai_r
     log("chat: {0} change(s) verified across {1} approval round(s)".format(len(answered), rounds))
 
 
-def process_batch(client, batch_index, letters, out_dir, export_format, use_ai_review, log,
-                  run_id):
+def process_batch(client, batch_index, letters, out_dir, export_format, log, key):
     """Upload, chat, verify, approve, export. Returns per customer outcomes."""
-    session_id = "letter-factory-{0}-batch-{1}".format(run_id, batch_index)
+    session_id = "letter-factory-" + key
     template_html, flat = build_batch(letters)
 
     uploaded = client.upload_document(
@@ -237,7 +271,7 @@ def process_batch(client, batch_index, letters, out_dir, export_format, use_ai_r
     outcomes = {}
     for letter in letters:
         outcomes[letter["record"]["customer_id"]] = {
-            "approved_sections": set(), "problems": [], "ai_notes": []}
+            "approved_sections": set(), "problems": []}
 
     def outstanding():
         pending = {}
@@ -259,8 +293,7 @@ def process_batch(client, batch_index, letters, out_dir, export_format, use_ai_r
         job_id = client.start_chat(
             session_id, build_instruction(flat, only_sections), model_tier=MODEL_TIER)
         chat_turns += 1
-        run_approval_rounds(client, session_id, job_id, by_chunk, outcomes,
-                            use_ai_review, log)
+        run_approval_rounds(client, session_id, job_id, by_chunk, outcomes, log)
         only_sections = outstanding()
         if not only_sections:
             break
@@ -300,8 +333,8 @@ def main():
     parser.add_argument("--format", default="docx",
                         choices=["docx", "pdf", "html", "markdown", "txt"],
                         help="export format for each batch")
-    parser.add_argument("--ai-review", action="store_true",
-                        help="add a Haiku class second opinion note per proposed change")
+    parser.add_argument("--resume", action="store_true",
+                        help="continue a previous run, skipping batches already paid for")
     parser.add_argument("--out", default="out", help="output directory")
     args = parser.parse_args()
 
@@ -342,52 +375,97 @@ def main():
     sent = []
     exports = []
     operations = 0
-    run_id = time.strftime("%Y%m%d-%H%M%S")
+    reused_operations = 0
+    failure = None
+    state_path = os.path.join(out_dir, "run-state.json")
+    report_path = os.path.join(out_dir, "run-report.json")
+
     if args.offline:
         print("Skipping SuperDocs stage. {0} letters assembled locally in {1}".format(
             len(ready), letters_dir))
     else:
+        key_for_run = run_key(ready, args.format)
+        state = load_state(state_path, key_for_run) if args.resume else None
+        if args.resume and state is None:
+            print("  nothing to resume from, {0} does not exist, starting a fresh run".format(
+                state_path))
+        if state is None:
+            state = {"run_key": key_for_run, "batches": {}}
+
         client = superdocs.SuperDocs(log=log)
-        use_ai_review = args.ai_review and ai_review.available()
-        if args.ai_review and not use_ai_review:
-            print("  ai review requested but ANTHROPIC_API_KEY is not set, continuing without it")
         print("\nSuperDocs stage: {0} letters in {1} batch(es), one chat operation per batch "
               "unless a batch needs a follow up turn".format(len(ready), len(batches)))
-        for index, batch in enumerate(batches, start=1):
-            print("\nBatch {0} of {1}: {2} letters".format(index, len(batches), len(batch)))
-            outcomes, export_path, session_id, chat_turns = process_batch(
-                client, index, batch, out_dir, args.format, use_ai_review, log, run_id)
-            exports.append(export_path)
-            operations += chat_turns
-            for letter in batch:
-                customer_id = letter["record"]["customer_id"]
-                outcome = outcomes[customer_id]
-                if outcome["problems"]:
-                    held.append({
-                        "customer_id": customer_id,
-                        "customer_name": letter["record"]["customer_name"],
-                        "variant": letter["variant"],
-                        "reasons": outcome["problems"],
-                        "checks": ["approved_wording_verification"],
-                    })
-                else:
-                    sent.append({
-                        "customer_id": customer_id,
-                        "variant": letter["variant"],
-                        "session_id": session_id,
-                        "ai_notes": outcome["ai_notes"],
-                    })
 
-    report = build_report(prepared, ready, sent, held, exports, operations, args, letters_dir)
+        # Every batch is wrapped so a failure part way through still reports what
+        # was already paid for, and leaves state behind to resume from.
+        try:
+            for index, batch in enumerate(batches, start=1):
+                key = batch_key(batch)
+                done = state["batches"].get(key)
+                if done and done.get("status") == "completed":
+                    print("\nBatch {0} of {1}: already completed in an earlier run, skipping "
+                          "({2} letters, {3} operation(s) already spent)".format(
+                              index, len(batches), len(batch), done["chat_turns"]))
+                    sent.extend(done["sent"])
+                    held.extend(done["held"])
+                    exports.append(done["export_path"])
+                    reused_operations += done["chat_turns"]
+                    continue
+
+                print("\nBatch {0} of {1}: {2} letters".format(index, len(batches), len(batch)))
+                outcomes, export_path, session_id, chat_turns = process_batch(
+                    client, index, batch, out_dir, args.format, log, key)
+                operations += chat_turns
+
+                batch_sent = []
+                batch_held = []
+                for letter in batch:
+                    customer_id = letter["record"]["customer_id"]
+                    outcome = outcomes[customer_id]
+                    if outcome["problems"]:
+                        batch_held.append({
+                            "customer_id": customer_id,
+                            "customer_name": letter["record"]["customer_name"],
+                            "variant": letter["variant"],
+                            "reasons": outcome["problems"],
+                            "checks": ["approved_wording_verification"],
+                        })
+                    else:
+                        batch_sent.append({
+                            "customer_id": customer_id,
+                            "variant": letter["variant"],
+                            "session_id": session_id,
+                        })
+                sent.extend(batch_sent)
+                held.extend(batch_held)
+                exports.append(export_path)
+                state["batches"][key] = {
+                    "batch_index": index, "session_id": session_id,
+                    "export_path": export_path, "chat_turns": chat_turns,
+                    "sent": batch_sent, "held": batch_held, "status": "completed",
+                }
+                save_state(state_path, state)
+        except (superdocs.SuperDocsError, KeyboardInterrupt) as error:
+            failure = "interrupted by the operator" if isinstance(
+                error, KeyboardInterrupt) else str(error)
+            save_state(state_path, state)
+
+    report = build_report(prepared, ready, sent, held, exports, operations,
+                          reused_operations, args, letters_dir, failure)
     print_report(report)
-    report_path = os.path.join(out_dir, "run-report.json")
     with open(report_path, "w") as fh:
         json.dump(report, fh, indent=2)
     print("\nFull report with the calculation trail for every letter: {0}".format(report_path))
+    if failure:
+        print("\nThis run stopped early: {0}".format(failure))
+        print("Work already paid for is recorded in {0}. Re-run the same command with --resume "
+              "to continue from the batch that failed.".format(state_path))
+        return 1
     return 0
 
 
-def build_report(prepared, ready, sent, held, exports, operations, args, letters_dir):
+def build_report(prepared, ready, sent, held, exports, operations, reused_operations, args,
+                 letters_dir, failure=None):
     counts = {}
     source = sent if not args.offline else [
         {"customer_id": letter["record"]["customer_id"], "variant": letter["variant"]}
@@ -400,7 +478,10 @@ def build_report(prepared, ready, sent, held, exports, operations, args, letters
         "records_considered": len(prepared),
         "letters_sent": len(source),
         "records_held": len(held),
+        "status": "failed" if failure else "completed",
+        "failure": failure,
         "operations_used": operations,
+        "operations_reused_from_earlier_run": reused_operations,
         "counts_by_variant": counts,
         "held_records": held,
         "sent_records": sent,
@@ -426,8 +507,13 @@ def print_report(report):
         print("  none")
     for variant in sorted(report["counts_by_variant"]):
         print("  {0}: {1} {2}".format(variant, report["counts_by_variant"][variant], label))
-    print("\nTotal {0}: {1}    held back: {2}    operations used: {3}".format(
-        label, report["letters_sent"], report["records_held"], report["operations_used"]))
+    print("\nTotal {0}: {1}    held back: {2}    operations used: {3}{4}".format(
+        label, report["letters_sent"], report["records_held"], report["operations_used"],
+        "    reused from an earlier run: {0}".format(
+            report["operations_reused_from_earlier_run"])
+        if report["operations_reused_from_earlier_run"] else ""))
+    if report["status"] == "failed":
+        print("\nRUN INCOMPLETE. Counts above cover only the batches that finished.")
     print("\nHeld back records ({0}):".format(report["records_held"]))
     if not report["held_records"]:
         print("  none")
@@ -435,13 +521,6 @@ def print_report(report):
         print("  {0} ({1}, {2})".format(item["customer_id"], item["customer_name"], item["variant"]))
         for reason in item["reasons"]:
             print("      reason: {0}".format(reason))
-    notes = [(item["customer_id"], note) for item in report["sent_records"]
-             for note in item.get("ai_notes", [])]
-    if notes:
-        print("\nAI reviewer notes (advisory only, the deterministic check decides):")
-        for customer_id, note in notes:
-            print("  {0} {1}".format(customer_id, note))
-
 
 if __name__ == "__main__":
     sys.exit(main())
